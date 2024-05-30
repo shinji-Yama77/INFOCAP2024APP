@@ -18,12 +18,8 @@ import os
 # Load environment variables from .env file
 load_dotenv()
 
-
 nlp = spacy.load("en_core_web_sm")
 
-xgb_model = XGBClassifier()  # Initialize the model
-sbert_model = SentenceTransformer('all-MiniLM-L6-v2')
-xgb_model.load_model('xgb_constructive_model_v3.json')  # Load the model file
 
 
 import torch.nn as nn
@@ -57,17 +53,33 @@ class RobertaWithFeatures(nn.Module):
         logits = self.classifier(combined_features)
         return logits
 
-rob_model = RobertaWithFeatures(num_features=8, num_labels=2)
-rob_model.load_state_dict(torch.load('./roberta_with_features_v1.pth'))
 
-model_name = "roberta-base"
-tokenizer = RobertaTokenizer.from_pretrained(model_name)
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-rob_model.to(device)
+# cache the model to optimize performance
+@st.cache_resource
+def load_roberta():
+    rob_model = RobertaWithFeatures(num_features=8, num_labels=2)
+    rob_model.load_state_dict(torch.load('./roberta_with_features_v1.pth'))
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    rob_model.to(device)
+    return rob_model, device
+
+
+@st.cache_resource
+def load_xgboost():
+    xgb_model = XGBClassifier()  # Initialize the model
+    sbert_model = SentenceTransformer('all-MiniLM-L6-v2')
+    xgb_model.load_model('xgb_constructive_model_v3.json') 
+    return xgb_model
+
+@st.cache_resource
+def load_tokenizer():
+    tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+    return tokenizer
 
 
 tab1, tab2, tab3, tab4 = st.tabs(["Prediction", "Score Descriptions", "XGBoost Model Card", "SoCial-ConStruct-RoBerta Model Card"])
+
 
 def clean_text(text, remove_numbers=False):
     # Remove URLs
@@ -92,10 +104,12 @@ def clean_text(text, remove_numbers=False):
 
     return text
 
+@st.cache_data
 def get_readability(text):
     readability = textstat.flesch_kincaid_grade(text)
     return readability
 
+@st.cache_data
 def count_pos(text, pos_tags=['DET', 'ADJ', 'NOUN', 'VERB', 'ADP']):
     # Initialize dictionary with desired POS tags set to zero
     pos_dictionary = {tag: 0 for tag in pos_tags}
@@ -108,6 +122,7 @@ def count_pos(text, pos_tags=['DET', 'ADJ', 'NOUN', 'VERB', 'ADP']):
 
     return pos_dictionary
 
+@st.cache_data
 def subjectivity(text):
     blob = TextBlob(text)
     subjectivity_score = blob.sentiment.subjectivity
@@ -124,6 +139,9 @@ client = discovery.build(
 )
 
 def predict_with_roberta(user_input):
+
+    rob_model, device = load_roberta()
+
     cleaned_comment = clean_text(user_input)
     # word_count = len(cleaned_comment.strip().split())
     # st.write('word_count:', word_count)
@@ -145,7 +163,7 @@ def predict_with_roberta(user_input):
     st.write('unsubstantialness', unsubstantial_summary_value)
 
     # Tokenization
-    tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
+    tokenizer = load_tokenizer()
     encodings = tokenizer(cleaned_comment, truncation=True, padding=True, max_length=512, return_tensors="pt")
     pos_order = ['DET', 'ADJ', 'NOUN', 'VERB', 'ADP']
     pos_features = [pos_counts[tag] for tag in pos_order]
@@ -165,6 +183,7 @@ def predict_with_roberta(user_input):
     return prediction.item()
 
 def predict_with_xgboost(user_input):
+    xgb_model = load_xgboost()
     cleaned_comment = clean_text(user_input)
     # word_count = len(cleaned_comment.strip().split())
     # st.write('word_count:', word_count)
