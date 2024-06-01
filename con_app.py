@@ -14,7 +14,7 @@ import torch
 import torch.nn.functional as F
 from dotenv import load_dotenv
 import os
-from google.cloud import language_v1
+
 
 
 # Load environment variables from .env file
