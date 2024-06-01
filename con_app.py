@@ -14,11 +14,16 @@ import torch
 import torch.nn.functional as F
 from dotenv import load_dotenv
 import os
+from google.cloud import language_v1
+
 
 # Load environment variables from .env file
 load_dotenv()
 
 nlp = spacy.load("en_core_web_sm")
+
+
+
 
 
 
@@ -70,7 +75,7 @@ def load_xgboost():
     xgb_model = XGBClassifier()  # Initialize the model
     sbert_model = SentenceTransformer('all-MiniLM-L6-v2')
     xgb_model.load_model('xgb_constructive_model_v3.json') 
-    return xgb_model
+    return xgb_model, sbert_model
 
 @st.cache_resource
 def load_tokenizer():
@@ -130,6 +135,8 @@ def subjectivity(text):
 
 API_KEY = os.getenv('API_KEY')
 
+
+
 client = discovery.build(
   "commentanalyzer",
   "v1alpha1",
@@ -137,6 +144,8 @@ client = discovery.build(
   discoveryServiceUrl = "https://commentanalyzer.googleapis.com/$discovery/rest?version=v1alpha1",
   static_discovery = False,
 )
+
+
 
 def predict_with_roberta(user_input):
 
@@ -183,7 +192,7 @@ def predict_with_roberta(user_input):
     return prediction.item()
 
 def predict_with_xgboost(user_input):
-    xgb_model = load_xgboost()
+    xgb_model, sbert_model = load_xgboost()
     cleaned_comment = clean_text(user_input)
     # word_count = len(cleaned_comment.strip().split())
     # st.write('word_count:', word_count)
